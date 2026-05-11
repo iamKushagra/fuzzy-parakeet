@@ -241,5 +241,3 @@ python-chat-bot/
 - Answer performance tracking (upvotes, citations)
 
 ---
-
-*Last updated: May 2026 | Owner: kkesav@confluent.io*

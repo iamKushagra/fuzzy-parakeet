@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+  <key>Label</key>
+  <string>com.confluent.aeo-agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Absolute path to .venv Python -->
+    <string>/Users/kushagra/CodeDirectory/python-chat-bot/.venv/bin/python3</string>
+    <string>/Users/kushagra/CodeDirectory/python-chat-bot/aeo_agent.py</string>
+  </array>
+
+  <!-- 7:00 PM IST = 13:30 UTC -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>13</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kushagra/CodeDirectory/python-chat-bot</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kushagra/CodeDirectory/python-chat-bot/aeo_agent.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/kushagra/CodeDirectory/python-chat-bot/aeo_agent.log</string>
+
+  <!-- Run missed jobs if Mac was asleep at scheduled time -->
+  <key>RunAtLoad</key>
+  <false/>
+
+</dict>
+</plist>

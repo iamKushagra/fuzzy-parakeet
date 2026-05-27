@@ -34,6 +34,38 @@ CREATE TABLE IF NOT EXISTS aeo_scores (
     note       TEXT,
     UNIQUE(topic_slug, recorded_date)
 );
+
+CREATE TABLE IF NOT EXISTS doc_citations (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform          TEXT NOT NULL,
+    thread_id         TEXT NOT NULL,
+    thread_url        TEXT NOT NULL,
+    thread_title      TEXT NOT NULL,
+    cited_doc_url     TEXT NOT NULL,
+    cited_doc_path    TEXT NOT NULL,
+    doc_topic_slug    TEXT,
+    doc_section       TEXT,
+    pickup_score      INTEGER NOT NULL DEFAULT 0,
+    sentiment         TEXT,
+    sentiment_score   REAL,
+    context_snippet   TEXT,
+    source_created_at TEXT,
+    first_seen_date   TEXT NOT NULL,
+    UNIQUE(platform, thread_id, cited_doc_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_citations_platform  ON doc_citations(platform);
+CREATE INDEX IF NOT EXISTS idx_citations_topic     ON doc_citations(doc_topic_slug);
+CREATE INDEX IF NOT EXISTS idx_citations_path      ON doc_citations(cited_doc_path);
+"""
+
+# Indexes that depend on columns added via the ALTER TABLE migration. We
+# create these after init_db() has ensured the columns exist, otherwise
+# CREATE INDEX IF NOT EXISTS errors on older DBs.
+_LATE_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_citations_section   ON doc_citations(doc_section);
+CREATE INDEX IF NOT EXISTS idx_citations_sentiment ON doc_citations(sentiment);
+CREATE INDEX IF NOT EXISTS idx_citations_pickup    ON doc_citations(pickup_score);
 """
 
 
@@ -45,6 +77,15 @@ def init_db(db_path: str = DB_PATH) -> sqlite3.Connection:
     existing = {r[1] for r in conn.execute("PRAGMA table_info(seen_questions)")}
     if "source_created_at" not in existing:
         conn.execute("ALTER TABLE seen_questions ADD COLUMN source_created_at TEXT")
+    # Migrate older doc_citations DBs to add the new derived columns.
+    existing_cit = {r[1] for r in conn.execute("PRAGMA table_info(doc_citations)")}
+    for col, defn in [("doc_section",     "TEXT"),
+                      ("pickup_score",    "INTEGER NOT NULL DEFAULT 0"),
+                      ("sentiment",       "TEXT"),
+                      ("sentiment_score", "REAL")]:
+        if col not in existing_cit:
+            conn.execute(f"ALTER TABLE doc_citations ADD COLUMN {col} {defn}")
+    conn.executescript(_LATE_INDEXES)
     conn.commit()
     return conn
 
@@ -59,10 +100,7 @@ def _parse_iso(ts: str) -> datetime | None:
 
 
 def _recency_score(created_at: str) -> int:
-    """Boost newer items. Items from Jan 2026 onward (the spec's target window)
-    sit roughly in the <180d bucket; older items still earn some recency credit
-    but the impact_score below is what lets very old highly-engaged questions
-    surface."""
+    """Boost newer items. Decays roughly: <1d=+40, <7d=+30, <30d=+20, <90d=+10, else 0."""
     dt = _parse_iso(created_at)
     if not dt:
         return 0
@@ -70,34 +108,11 @@ def _recency_score(created_at: str) -> int:
         dt = dt.replace(tzinfo=timezone.utc)
     age_days = max(0.0, (datetime.now(tz=timezone.utc) - dt).total_seconds() / 86400.0)
     if age_days < 1:    return 40
-    if age_days < 7:    return 35
-    if age_days < 30:   return 28
-    if age_days < 90:   return 20
-    if age_days < 180:  return 12
+    if age_days < 7:    return 30
+    if age_days < 30:   return 20
+    if age_days < 90:   return 10
     if age_days < 365:  return 5
     return 0
-
-
-def _impact_score(question: Dict[str, Any]) -> int:
-    """Engagement-based boost — upvotes, points, +1 reactions, answer counts.
-    Lets older-but-highly-engaged questions outrank fresh-but-low-signal ones.
-
-    Logarithmic so a 1000-vote SO post doesn't dominate everything:
-      score=0    -> 0
-      score=5    -> ~12
-      score=25   -> ~23
-      score=100  -> ~33
-      score=500  -> ~45
-    Plus a smaller boost from answer_count signaling discussion volume.
-    """
-    raw_score = int(question.get("score") or 0)
-    answer_count = int(question.get("answer_count") or 0)
-    pts = 0
-    if raw_score > 0:
-        pts += min(50, int(math.log2(raw_score + 1) * 5))
-    if answer_count > 0:
-        pts += min(20, int(math.log2(answer_count + 1) * 4))
-    return pts
 
 
 def _is_high_priority(question: Dict[str, Any]) -> bool:
@@ -128,7 +143,6 @@ def _score_question(question: Dict[str, Any]) -> int:
     if not question.get("is_answered", False) and question.get("answer_count", 0) == 0:
         score += 15
     score += _recency_score(question.get("created_at", ""))
-    score += _impact_score(question)
     return score
 
 

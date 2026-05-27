@@ -29,6 +29,11 @@
         Questions
         <span x-show="stats.total" class="ml-1 bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded-full" x-text="stats.total"></span>
       </button>
+      <button @click="tab='citations'; loadCitations()" :class="tab==='citations' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
+        class="px-3 py-4 text-sm font-medium transition-colors">
+        Citations
+        <span x-show="citationStats.total" class="ml-1 bg-gray-100 text-gray-600 text-xs px-1.5 py-0.5 rounded-full" x-text="citationStats.total"></span>
+      </button>
       <button @click="tab='tracker'; loadScores()" :class="tab==='tracker' ? 'tab-active' : 'text-gray-500 hover:text-gray-700'"
         class="px-3 py-4 text-sm font-medium transition-colors">AEO Tracker</button>
     </div>
@@ -243,6 +248,37 @@
 
         <!-- Answer panel -->
         <div x-show="q._showAnswer" x-transition class="border-t border-gray-100 bg-gray-50 p-4">
+          <!-- AEO playbook (decision/migration framing) -->
+          <div x-show="q._playbook" class="mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <span class="text-xs font-semibold text-amber-900 uppercase tracking-wide">AEO posting playbook</span>
+              <button @click="redraftAnswer(q)" :disabled="q._redrafting"
+                class="text-xs bg-amber-700 text-white px-2.5 py-1 rounded-lg hover:bg-amber-800 disabled:opacity-50 transition-colors">
+                <span x-text="q._redrafting ? 'Redrafting…' : 'Redraft with playbook'"></span>
+              </button>
+            </div>
+            <p class="text-xs text-amber-950 mb-2" x-text="q._playbook?.aeo_goal"></p>
+            <p x-show="q._playbook?.platform_citation_profile" class="text-[11px] text-amber-800/90 mb-2 italic"
+               x-text="q._playbook?.platform_citation_profile"></p>
+            <ol class="text-xs text-amber-900 list-decimal ml-4 space-y-0.5 mb-2">
+              <template x-for="(step, i) in (q._playbook?.answer_outline ?? [])" :key="i">
+                <li x-text="step"></li>
+              </template>
+            </ol>
+            <div class="mb-1">
+              <p class="text-[10px] font-medium text-amber-800 uppercase mb-0.5">Primary docs (lead with these)</p>
+              <template x-for="url in (q._playbook?.decision_docs ?? [])" :key="url">
+                <a :href="url" target="_blank" class="block text-xs text-[#0077b6] hover:underline truncate" x-text="url"></a>
+              </template>
+            </div>
+            <div x-show="(q._playbook?.support_docs ?? []).length">
+              <p class="text-[10px] font-medium text-amber-700 uppercase mb-0.5">Support docs (only if operational)</p>
+              <template x-for="url in (q._playbook?.support_docs ?? [])" :key="'s'+url">
+                <a :href="url" target="_blank" class="block text-xs text-gray-600 hover:underline truncate" x-text="url"></a>
+              </template>
+            </div>
+          </div>
+
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Drafted Answer</span>
             <button @click="copyAnswer(q)" class="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
@@ -287,6 +323,153 @@
     <span class="px-3 py-1.5 text-sm text-gray-500"
       x-text="'Page ' + qPage + ' of ' + Math.ceil(qTotal/20)"></span>
     <button @click="qPage++; loadQuestions()" :disabled="qPage >= Math.ceil(qTotal/20)"
+      class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-30 hover:bg-gray-100 transition-colors">Next →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════ CITATIONS TAB ══════════════════════════════════ -->
+<div x-show="tab==='citations'" x-cloak class="fade-in">
+
+  <p class="text-sm text-gray-500 mb-4">
+  External threads that already link to <code class="bg-gray-100 px-1 rounded">docs.confluent.io</code> —
+  triage negatives, amplify positives, and spot which doc pages LLMs already learn from.
+  </p>
+
+  <!-- Stat cards -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+      <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Citations</p>
+      <p class="text-3xl font-bold text-gray-900" x-text="citationStats.total ?? '—'"></p>
+      <p class="text-[10px] text-gray-400 mt-1">rows in database</p>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+      <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Unique Threads</p>
+      <p class="text-3xl font-bold text-gray-900" x-text="citationStats.unique_threads ?? '—'"></p>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+      <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Doc Pages Cited</p>
+      <p class="text-3xl font-bold text-gray-900" x-text="citationStats.unique_pages ?? '—'"></p>
+    </div>
+    <div class="bg-white rounded-xl border border-amber-100 p-4">
+      <p class="text-xs text-amber-600 uppercase tracking-wide mb-1">Avg Pickup Score</p>
+      <p class="text-3xl font-bold text-amber-600" x-text="citationStats.avg_pickup_score ?? '—'"></p>
+    </div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4 mb-6">
+  <div class="bg-white rounded-xl border border-gray-200 p-4">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3">Citations by Platform</h3>
+      <template x-for="platform in citationPlatforms" :key="platform">
+        <div class="mb-2">
+          <div class="flex justify-between text-xs mb-0.5">
+            <span class="text-gray-600 capitalize" x-text="platform"></span>
+            <span class="font-medium" x-text="(citationStats.by_platform ?? {})[platform] ?? 0"></span>
+          </div>
+          <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-full bg-[#0077b6] rounded-full transition-all"
+              :style="'width:' + platformBarPct(platform) + '%'"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+      <h3 class="text-sm font-semibold text-gray-700 mb-3">Sentiment</h3>
+      <template x-for="s in ['negative','neutral','positive']" :key="s">
+        <div class="flex justify-between text-xs py-1">
+          <span class="capitalize"
+            :class="s==='negative' ? 'text-red-600' : s==='positive' ? 'text-green-600' : 'text-gray-500'"
+            x-text="s"></span>
+          <span class="font-medium" x-text="(citationStats.by_sentiment ?? {})[s] ?? 0"></span>
+        </div>
+      </template>
+      <h3 class="text-sm font-semibold text-gray-700 mt-4 mb-2">Top cited doc paths</h3>
+      <template x-for="p in (citationStats.top_cited_pages ?? []).slice(0,5)" :key="p.path">
+        <div class="flex justify-between text-xs py-0.5 gap-2">
+          <span class="text-gray-600 truncate" :title="p.path" x-text="p.path"></span>
+          <span class="font-medium shrink-0" x-text="p.count"></span>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="flex flex-wrap gap-2 mb-4 items-center">
+    <input x-model.debounce.400ms="citationFilters.q" @input="cPage=1; loadCitations()"
+      placeholder="Search threads or doc paths…"
+      class="flex-1 min-w-[200px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0077b6]/30" />
+    <select x-model="citationFilters.platform" @change="cPage=1; loadCitations()"
+      class="border border-gray-200 rounded-lg px-2 py-2 text-sm">
+      <option value="">All platforms</option>
+      <template x-for="p in citationPlatforms" :key="'f'+p">
+        <option :value="p" x-text="p"></option>
+      </template>
+    </select>
+    <select x-model="citationFilters.doc_section" @change="cPage=1; loadCitations()"
+      class="border border-gray-200 rounded-lg px-2 py-2 text-sm max-w-[180px]">
+      <option value="">All doc sections</option>
+      <template x-for="sec in sortedDocSections()" :key="sec">
+        <option :value="sec" x-text="sec"></option>
+      </template>
+    </select>
+    <select x-model="citationFilters.sentiment" @change="cPage=1; loadCitations()"
+      class="border border-gray-200 rounded-lg px-2 py-2 text-sm">
+      <option value="">All sentiment</option>
+      <option value="negative">Negative</option>
+      <option value="neutral">Neutral</option>
+      <option value="positive">Positive</option>
+    </select>
+    <button x-show="citationFiltersActive()" @click="clearCitationFilters()"
+      class="text-xs text-gray-500 hover:text-gray-700 px-2 py-2">Clear filters</button>
+    <span class="text-xs text-gray-400 ml-auto">
+      <span x-text="cTotal + ' results'"></span>
+      <span x-show="citationFiltersActive() && citationStats.total"
+        x-text="' (filtered from ' + citationStats.total + ')'"></span>
+    </span>
+  </div>
+
+  <div x-show="loading && tab==='citations'" class="text-center py-20 text-gray-400">
+    <p class="text-sm">Loading citations…</p>
+  </div>
+
+  <div class="space-y-3" x-show="citations.length && !(loading && tab==='citations')">
+    <template x-for="c in citations" :key="c.id">
+      <div class="bg-white rounded-xl border border-gray-200 p-4"
+           :class="c.sentiment === 'negative' && 'border-l-4 border-l-red-400'">
+        <div class="flex flex-wrap gap-1.5 mb-1.5">
+          <span class="inline-flex text-xs px-2 py-0.5 rounded-full capitalize"
+            :class="c.sentiment==='negative' ? 'bg-red-50 text-red-600' : c.sentiment==='positive' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-600'"
+            x-text="c.sentiment || 'neutral'"></span>
+          <span class="inline-flex text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full capitalize" x-text="c.platform"></span>
+          <span x-show="c.doc_section" class="inline-flex text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" x-text="c.doc_section"></span>
+          <span class="inline-flex text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full"
+            x-text="'pickup ' + (c.pickup_score ?? 0)"></span>
+        </div>
+        <a :href="c.thread_url" target="_blank" class="text-sm font-medium text-gray-900 hover:text-[#0077b6] line-clamp-2"
+          x-text="c.thread_title"></a>
+        <p class="text-xs mt-1">
+          <a :href="c.cited_doc_url" target="_blank" class="text-[#0077b6] hover:underline break-all" x-text="c.cited_doc_path"></a>
+        </p>
+        <p x-show="c.context_snippet" class="text-xs text-gray-500 mt-2 line-clamp-3 italic" x-text="c.context_snippet"></p>
+        <p class="text-[10px] text-gray-400 mt-1">
+          <span x-show="c.source_created_at" x-text="relativeAge(c.source_created_at)"></span>
+          <span x-show="c.source_created_at" class="mx-1">·</span>
+          <span x-text="'seen ' + formatDate(c.first_seen_date)"></span>
+        </p>
+      </div>
+    </template>
+  </div>
+
+  <div x-show="!citations.length && !(loading && tab==='citations')" class="text-center py-20 text-gray-400">
+    <p class="text-lg mb-1">No doc citations yet</p>
+    <p class="text-sm">Run <code class="bg-gray-100 px-1 rounded">python3 aeo_agent.py</code> to find threads that link to docs.confluent.io</p>
+  </div>
+
+  <div x-show="cTotal > 20" class="flex justify-center gap-2 mt-4">
+    <button @click="cPage--; loadCitations()" :disabled="cPage<=1"
+      class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-30 hover:bg-gray-100 transition-colors">← Prev</button>
+    <span class="px-3 py-1.5 text-sm text-gray-500"
+      x-text="'Page ' + cPage + ' of ' + Math.ceil(cTotal/20)"></span>
+    <button @click="cPage++; loadCitations()" :disabled="cPage >= Math.ceil(cTotal/20)"
       class="px-3 py-1.5 text-sm border rounded-lg disabled:opacity-30 hover:bg-gray-100 transition-colors">Next →</button>
   </div>
 </div>
@@ -409,6 +592,8 @@ const TOPIC_COLORS = {
   connectors_cdc:           '#e63946',
 };
 
+const CITATION_PLATFORMS = ['reddit', 'stackoverflow', 'hackernews', 'quora', 'github'];
+
 function app() {
   return {
     tab: 'dashboard',
@@ -425,14 +610,23 @@ function app() {
     baselines: {},
     newScore: { topic_slug: '', score: '', recorded_date: new Date().toISOString().slice(0,10), note: '' },
     scoreSaved: false,
+    citationStats: {},
+    citationPlatforms: CITATION_PLATFORMS,
+    citations: [],
+    cTotal: 0,
+    cPage: 1,
+    citationFilters: { q: '', platform: '', doc_section: '', sentiment: '' },
     _activityChart: null,
     _trendChart: null,
 
     async init() {
       this.loading = true;
-      await Promise.all([this.loadStats(), this.loadDigest()]);
-      this.loading = false;
-      this.lastRefresh = new Date().toLocaleTimeString();
+      try {
+        await Promise.all([this.loadStats(), this.loadDigest(), this.loadCitationStats()]);
+        this.lastRefresh = new Date().toLocaleTimeString();
+      } finally {
+        this.loading = false;
+      }
     },
 
     async loadDigest() {
@@ -453,6 +647,69 @@ function app() {
       this.$nextTick(() => this.drawActivityChart());
     },
 
+    async loadCitationStats() {
+      try {
+        const r = await fetch('/api/citations/stats');
+        if (!r.ok) return;
+        const d = await r.json();
+        this.citationStats = d;
+        if (d.topic_names) this.topicNames = { ...this.topicNames, ...d.topic_names };
+      } catch (_) {
+        this.citationStats = {};
+      }
+    },
+
+    async loadCitations() {
+      this.loading = true;
+      try {
+        await this.loadCitationStats();
+        const p = new URLSearchParams({
+          page: this.cPage,
+          ...(this.citationFilters.q           && { q:           this.citationFilters.q }),
+          ...(this.citationFilters.platform    && { platform:    this.citationFilters.platform }),
+          ...(this.citationFilters.doc_section && { doc_section: this.citationFilters.doc_section }),
+          ...(this.citationFilters.sentiment   && { sentiment:   this.citationFilters.sentiment }),
+        });
+        const r = await fetch('/api/citations?' + p);
+        if (!r.ok) throw new Error('citations ' + r.status);
+        const d = await r.json();
+        this.cTotal = d.total;
+        this.citations = d.citations ?? [];
+        if (d.topic_names) this.topicNames = { ...this.topicNames, ...d.topic_names };
+      } catch (_) {
+        this.citations = [];
+        this.cTotal = 0;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    clearCitationFilters() {
+      this.citationFilters = { q: '', platform: '', doc_section: '', sentiment: '' };
+      this.cPage = 1;
+      this.loadCitations();
+    },
+
+    citationFiltersActive() {
+      const f = this.citationFilters;
+      return !!(f.q || f.platform || f.doc_section || f.sentiment);
+    },
+
+    sortedDocSections() {
+      const sections = Object.keys(this.citationStats.by_doc_section ?? {});
+      return sections.sort((a, b) => {
+        const ca = this.citationStats.by_doc_section[a] ?? 0;
+        const cb = this.citationStats.by_doc_section[b] ?? 0;
+        return cb - ca || a.localeCompare(b);
+      });
+    },
+
+    platformBarPct(platform) {
+      const n = (this.citationStats.by_platform ?? {})[platform] ?? 0;
+      const total = this.citationStats.total || 1;
+      return Math.min(100, Math.round((n / total) * 100));
+    },
+
     async loadQuestions() {
       const p = new URLSearchParams({
         page: this.qPage,
@@ -465,7 +722,10 @@ function app() {
       const r = await fetch('/api/questions?' + p);
       const d = await r.json();
       this.qTotal = d.total;
-      this.questions = d.questions.map(q => ({ ...q, _showAnswer: false, _postUrl: '', _copied: false }));
+      this.questions = d.questions.map(q => ({
+        ...q, _showAnswer: false, _postUrl: '', _copied: false,
+        _playbook: null, _redrafting: false,
+      }));
       this.topicNames = { ...this.topicNames, ...d.topic_names };
     },
 
@@ -496,8 +756,36 @@ function app() {
       await this.loadScores();
     },
 
-    toggleAnswer(q) {
+    async toggleAnswer(q) {
       q._showAnswer = !q._showAnswer;
+      if (q._showAnswer && !q._playbook) {
+        await this.loadPlaybook(q);
+      }
+    },
+
+    async loadPlaybook(q) {
+      try {
+        const r = await fetch(
+          `/api/playbooks/${encodeURIComponent(q.topic_slug)}?platform=${encodeURIComponent(q.platform)}`
+        );
+        if (r.ok) q._playbook = await r.json();
+      } catch (_) { /* playbook optional */ }
+    },
+
+    async redraftAnswer(q) {
+      q._redrafting = true;
+      try {
+        const r = await fetch(`/api/questions/${encodeURIComponent(q.question_id)}/redraft`, {
+          method: 'POST',
+        });
+        const d = await r.json();
+        if (d.ok) q.answer_drafted = d.answer_drafted;
+        else alert(d.error || 'Redraft failed');
+      } catch (e) {
+        alert('Redraft failed: ' + e.message);
+      } finally {
+        q._redrafting = false;
+      }
     },
 
     async copyAnswer(q) {
@@ -546,7 +834,7 @@ function app() {
 
     drawActivityChart() {
       const ctx = document.getElementById('activityChart');
-      if (!ctx) return;
+      if (!ctx || typeof Chart === 'undefined') return;
       const data = this.stats.daily_activity ?? [];
       if (this._activityChart) this._activityChart.destroy();
       this._activityChart = new Chart(ctx, {
@@ -568,7 +856,7 @@ function app() {
 
     drawTrendChart() {
       const ctx = document.getElementById('trendChart');
-      if (!ctx) return;
+      if (!ctx || typeof Chart === 'undefined') return;
       if (this._trendChart) this._trendChart.destroy();
 
       const slugs = Object.keys(this.topicNames);

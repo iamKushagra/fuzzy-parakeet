@@ -105,7 +105,12 @@ def _send_webhook(webhook_url: str, payload: dict) -> bool:
         return False
 
 
-def _send_local(local_url: str, questions: List[Dict[str, Any]], run_date: str) -> bool:
+def _send_local(
+    local_url: str,
+    questions: List[Dict[str, Any]],
+    run_date: str,
+    new_citations_count: int = 0,
+) -> bool:
     """Fallback: POST a JSON digest to the local Flask dashboard.
 
     The dashboard stores it in the `digests` table and surfaces it in the
@@ -114,6 +119,7 @@ def _send_local(local_url: str, questions: List[Dict[str, Any]], run_date: str) 
     body = {
         "run_date": run_date,
         "question_count": len(questions),
+        "new_citations_count": new_citations_count,
         "questions": [
             {
                 "platform":          q.get("platform", ""),
@@ -171,9 +177,22 @@ def _post_thread_answer(token: str, channel: str, thread_ts: str, question: Dict
         pass
 
 
-def send_digest(questions: List[Dict[str, Any]], dry_run: bool = False) -> bool:
+def send_digest(
+    questions: List[Dict[str, Any]],
+    dry_run: bool = False,
+    new_citations_count: int = 0,
+) -> bool:
     if not questions:
-        print("[Slack] No new questions to send today.")
+        print(
+            f"[Slack] No new questions to send today "
+            f"(but {new_citations_count} new doc citations recorded)."
+        )
+        # Still ping the local dashboard so the digest card shows the citation
+        # count even on quiet question days.
+        if not dry_run and new_citations_count:
+            local_url = os.getenv("LOCAL_DIGEST_URL", "http://localhost:5050/api/digest")
+            run_date = datetime.now(tz=timezone.utc).strftime("%B %d, %Y")
+            _send_local(local_url, [], run_date, new_citations_count=new_citations_count)
         return True
 
     run_date = datetime.now(tz=timezone.utc).strftime("%B %d, %Y")
@@ -226,7 +245,8 @@ def send_digest(questions: List[Dict[str, Any]], dry_run: bool = False) -> bool:
             return False
 
         local_url = os.getenv("LOCAL_DIGEST_URL", "http://localhost:5050/api/digest")
-        ok = _send_local(local_url, questions, run_date)
+        ok = _send_local(local_url, questions, run_date,
+                         new_citations_count=new_citations_count)
         if ok:
             print(
                 f"[Digest] No Slack creds — posted {len(questions)} questions "

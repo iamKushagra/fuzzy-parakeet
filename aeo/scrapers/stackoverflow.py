@@ -16,7 +16,7 @@ def scrape(topic_slug: str, keywords: List[str], lookback_hours: int = 25) -> Li
     seen_ids = set()
     cutoff_ts = int(time.time()) - (lookback_hours * 3600)
 
-    queries = keywords[:8]
+    queries = keywords[:5]
 
     with httpx.Client(timeout=15) as client:
         for query in queries:

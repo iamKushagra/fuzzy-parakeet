@@ -10,8 +10,6 @@ from typing import List, Dict, Any
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
-from ._common import google_lookback_tbs
-
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -34,9 +32,8 @@ def _stable_id(url: str) -> str:
 def scrape(topic_slug: str, keywords: List[str], lookback_hours: int = 25) -> List[Dict[str, Any]]:
     results = []
     seen_ids = set()
-    tbs = google_lookback_tbs(lookback_hours)
 
-    queries = keywords[:6]
+    queries = keywords[:4]
 
     with httpx.Client(headers=HEADERS, timeout=15, follow_redirects=True) as client:
         for query in queries:
@@ -45,7 +42,7 @@ def scrape(topic_slug: str, keywords: List[str], lookback_hours: int = 25) -> Li
                 params = {
                     "q": search_query,
                     "num": 10,
-                    "tbs": tbs,
+                    "tbs": "qdr:d",  # past 24 hours
                 }
                 resp = client.get("https://www.google.com/search", params=params)
                 if resp.status_code != 200:

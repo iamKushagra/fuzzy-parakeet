@@ -40,7 +40,7 @@ def scrape(topic_slug: str, keywords: List[str], lookback_hours: int = 25) -> Li
     # Cap repos to 4 to stay within GitHub's query length limit and 60 req/hr rate.
     # Add GITHUB_TOKEN to .env to raise limit to 5000 req/hr.
     repo_filter = " ".join(f"repo:{r}" for r in GITHUB_REPOS[:4])
-    queries = keywords[:6]
+    queries = keywords[:3]
 
     with httpx.Client(headers=_get_headers(), timeout=15) as client:
         for query in queries:

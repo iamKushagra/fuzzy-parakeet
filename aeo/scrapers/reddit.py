@@ -12,7 +12,6 @@ from typing import List, Dict, Any
 from datetime import datetime, timezone
 
 from ..config import REDDIT_SUBREDDITS
-from ._common import google_lookback_tbs
 
 _UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -88,7 +87,6 @@ def scrape(topic_slug: str, keywords: List[str], lookback_hours: int = 72) -> Li
     results = []
     seen_ids: set = set()
     cutoff_ts = time.time() - (lookback_hours * 3600)
-    tbs = google_lookback_tbs(lookback_hours)
 
     # Narrow to most relevant subreddits for Google search
     subreddit_filter = " OR ".join(
@@ -98,10 +96,10 @@ def scrape(topic_slug: str, keywords: List[str], lookback_hours: int = 72) -> Li
     with httpx.Client(headers=HEADERS, timeout=15, follow_redirects=True) as client:
 
         # --- Strategy 1: Google search site:reddit.com ---
-        for query in keywords[:6]:  # widened to surface more candidates; throttle below mitigates Google rate-limit risk
+        for query in keywords[:3]:  # limit to avoid Google rate limit
             try:
                 search_q = f"({subreddit_filter}) {query}"
-                params = {"q": search_q, "num": 10, "tbs": tbs}
+                params = {"q": search_q, "num": 10, "tbs": "qdr:w"}  # past week
                 resp = client.get("https://www.google.com/search", params=params)
                 if resp.status_code in (429, 302) and "sorry" in resp.url.path:
                     break  # rate limited; skip to RSS fallback

@@ -71,7 +71,7 @@ TOPICS: List[TopicConfig] = [
             "replace rabbitmq",
             "migrate from rabbitmq",
         ],
-        doc_url="https://docs.confluent.io/cloud/current/overview.html",
+        doc_url="https://docs.confluent.io/kafka/introduction.html",
     ),
     TopicConfig(
         name="Real-Time Data Pipelines / Real-Time Analytics",
